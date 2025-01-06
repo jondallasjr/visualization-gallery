@@ -8,23 +8,52 @@ class Particle {
     size: number;
     velocityX: number;
     velocityY: number;
-    color: string;
+    currentColor: string;
+    targetColor: string;
     trail: { x: number; y: number; opacity: number }[];
     minimumSpeed: number;
+    createdAt: number;
 
     constructor(x: number, y: number, size: number, color: string) {
         this.x = x;
         this.y = y;
         this.size = size;
-        this.velocityX = Math.random() * 2 - 1; // Random velocity between -1 and 1
+        this.velocityX = Math.random() * 2 - 1;
         this.velocityY = Math.random() * 2 - 1;
-        this.color = color;
-        this.trail = []; // Store trail points
-        this.minimumSpeed = 0.1; // Minimum speed threshold
+        this.currentColor = color;
+        this.targetColor = this.generateRandomColor();
+        this.trail = [];
+        this.minimumSpeed = 0.1;
+        this.createdAt = Date.now();
     }
 
-    // Update particle position
+    // Generate a random color in the format "r, g, b"
+    generateRandomColor(): string {
+        const r = Math.floor(Math.random() * 256);
+        const g = Math.floor(Math.random() * 256);
+        const b = Math.floor(Math.random() * 256);
+        return `${r}, ${g}, ${b}`;
+    }
+
+    // Interpolate between currentColor and targetColor
+    updateColor() {
+        const current = this.currentColor.split(',').map(Number);
+        const target = this.targetColor.split(',').map(Number);
+        const newColor = current.map((c, i) => {
+            const delta = target[i] - c;
+            return c + delta * 0.01; // Adjust the speed of color change here
+        });
+        this.currentColor = newColor.join(', ');
+
+        // If the color is close to the target, generate a new target
+        if (newColor.every((c, i) => Math.abs(c - target[i]) < 1)) {
+            this.targetColor = this.generateRandomColor();
+        }
+    }
+
     update(canvas: HTMLCanvasElement, mouseX: number, mouseY: number, isCursorActive: boolean) {
+        this.updateColor(); // Update the particle's color
+
         // Smoothly move towards the cursor if active
         if (isCursorActive) {
             const dx = mouseX - this.x;
@@ -87,7 +116,6 @@ class Particle {
         });
     }
 
-    // Draw particle and its trail
     draw(ctx: CanvasRenderingContext2D) {
         // Draw smooth trail lines
         ctx.beginPath();
@@ -114,7 +142,7 @@ class Particle {
 
         // Adjust trail color to retain some of the original color
         const trailOpacity = Math.max(0.2, this.trail[this.trail.length - 1]?.opacity || 0); // Ensure minimum opacity
-        ctx.strokeStyle = `rgba(${this.color}, ${trailOpacity})`; // Retain some color
+        ctx.strokeStyle = `rgba(${this.currentColor}, ${trailOpacity})`; // Retain some color
         ctx.lineWidth = this.size;
         ctx.stroke();
         ctx.closePath();
@@ -122,7 +150,7 @@ class Particle {
         // Draw particle
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${this.color}, 1)`;
+        ctx.fillStyle = `rgba(${this.currentColor}, 1)`;
         ctx.fill();
         ctx.closePath();
     }
@@ -137,6 +165,7 @@ const ParticleSystem: React.FC = () => {
     const cursorTimeout = useRef<NodeJS.Timeout | null>(null);
     const animationFrameId = useRef<number>(0);
     const [isFullScreen, setIsFullScreen] = useState(false);
+    const MAX_PARTICLES = 500; // Adjust this number based on performance needs
 
     // Toggle full-screen mode
     const toggleFullScreen = () => {
@@ -211,15 +240,38 @@ const ParticleSystem: React.FC = () => {
 
         // Animation loop
         const animate = () => {
-            // Clear canvas with a fully opaque black background
-            ctx.fillStyle = 'rgba(0, 0, 0, 1)'; // Fully opaque black background
+            // Clear canvas
+            ctx.fillStyle = 'rgba(0, 0, 0, 1)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+        
+            // Remove expired particles (older than 60 seconds)
+            const now = Date.now();
+            particlesRef.current = particlesRef.current.filter(
+                (particle) => now - particle.createdAt < 60000 // 60 seconds in milliseconds
+            );
+        
+            // Remove excess particles if the count exceeds MAX_PARTICLES
+            if (particlesRef.current.length > MAX_PARTICLES) {
+                // Remove the oldest particles first
+                particlesRef.current.sort((a, b) => a.createdAt - b.createdAt); // Sort by creation time
+                particlesRef.current = particlesRef.current.slice(-MAX_PARTICLES); // Keep only the newest particles
+            }
+        
+            // Add new particles if needed
+            if (particlesRef.current.length < MAX_PARTICLES) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const size = Math.random() * 1 + 0.5;
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                particlesRef.current.push(new Particle(x, y, size, color));
+            }
+        
+            // Update and draw remaining particles
             particlesRef.current.forEach((particle) => {
                 particle.update(canvas, mouseX.current, mouseY.current, isCursorActive.current);
                 particle.draw(ctx);
             });
-
+        
             // Request the next frame
             animationFrameId.current = requestAnimationFrame(animate);
         };
