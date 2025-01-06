@@ -1,10 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Visualization Gallery
+
+This is a Next.js project showcasing interactive data visualizations and generative art. The project is built with modern web technologies including React, Tailwind CSS, and Recharts.
+
+## Features
+
+- Interactive visualization gallery
+- Lazy-loaded visualization components
+- Dark mode support
+- Responsive design
+- Customizable color schemes
 
 ## Getting Started
 
-First, run the development server:
+First, install dependencies:
 
 ```bash
+npm install
+# or
+yarn install
+# or
+pnpm install
+# or
+bun install
+Then, run the development server:
+
+bash
+Copy
 npm run dev
 # or
 yarn dev
@@ -12,25 +33,32 @@ yarn dev
 pnpm dev
 # or
 bun dev
-```
+Open http://localhost:3000 with your browser to see the result.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Project Structure
+src/components/: Reusable UI components
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+src/components/visualizations/: Individual visualization components
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+src/app/: Next.js app router files
 
-## Learn More
+src/lib/: Utility functions and helpers
 
-To learn more about Next.js, take a look at the following resources:
+Adding New Visualizations
+Create a new component in src/components/visualizations/
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Add the visualization to the visualizations object in src/components/VisualizationGallery.tsx
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Import and lazy-load the component
 
-## Deploy on Vercel
+Learn More
+To learn more about the technologies used in this project:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Next.js Documentation
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Tailwind CSS Documentation
+
+Recharts Documentation
+
+License
+This project is licensed under the MIT License.
