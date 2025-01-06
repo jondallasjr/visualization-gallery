@@ -20,7 +20,7 @@ class Particle {
         this.velocityY = Math.random() * 2 - 1;
         this.color = color;
         this.trail = []; // Store trail points
-        this.minimumSpeed = 0.5; // Minimum speed threshold
+        this.minimumSpeed = 0.1; // Minimum speed threshold
     }
 
     // Update particle position
@@ -39,8 +39,8 @@ class Particle {
         }
 
         // Apply damping to smooth out velocity changes
-        this.velocityX *= 0.999; // Slower deceleration (closer to 1)
-        this.velocityY *= 0.999;
+        this.velocityX *= 0.998; // Slower deceleration (closer to 1)
+        this.velocityY *= 0.998;
 
         // Ensure the particle never stops moving
         const speed = Math.sqrt(this.velocityX * this.velocityX + this.velocityY * this.velocityY);

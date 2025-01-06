@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 
 // Lazy load visualization components
 const ParticleSystem = lazy(() => import('./visualizations/ParticleSystem'));
+const LiquidMorph = lazy(() => import('./visualizations/LiquidMorph'));
+const CameraVision = lazy(() => import('./visualizations/CameraVision')); // Add this line
 
 type Visualization = {
   name: string;
@@ -18,6 +20,16 @@ const visualizations: Record<string, Visualization> = {
     name: 'Particle System',
     component: ParticleSystem,
     description: 'Interactive particle system that responds to cursor movement',
+  },
+  liquidMorph: {
+    name: 'Liquid Morph',
+    component: LiquidMorph,
+    description: 'Smooth morphing between different shapes with a liquid effect',
+  },
+  cameraVision: { // Add this entry
+    name: 'Camera Vision',
+    component: CameraVision,
+    description: 'Real-time camera feed analyzed by OpenAI Vision',
   },
   // Add more visualizations here
 };
