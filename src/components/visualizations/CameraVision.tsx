@@ -21,15 +21,15 @@ const CameraVision: React.FC = () => {
 
   const captureAndDescribe = useCallback(async () => {
     if (!webcamRef.current) return;
-
+  
     const imageSrc = webcamRef.current.getScreenshot();
     if (!imageSrc) return;
-
+  
     try {
       // Append the last 20 descriptions to the prompt
       const previousDescriptions = descriptions.map(d => d.text).join('\n');
-      const prompt = `Describe what you see in this image in 1-5 words. Be poetic, cryptic, and intriguing. Do not repeat the previous descriptions. Focus on new objects, ideas, or concepts.\n<Previous Descriptions>\n${previousDescriptions}\n</Previous Descriptions>`;
-
+      const prompt = `Describe what you see in this image in 1-5 words. Be poetic, cryptic, and intriguing. Do not repeat the previous descriptions. Focus on new objects, ideas, or concepts. If there is nothing new, respond with "Nothing new...":\n<Previous Descriptions>${previousDescriptions}\n</Previous Descriptions>`;
+  
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
@@ -51,14 +51,14 @@ const CameraVision: React.FC = () => {
         ],
         max_tokens: 50,
       });
-
+  
       const newDescription = response.choices[0].message.content || 'A moment suspended in time...';
-
+  
       // Generate random font and position for the new description
       const font = fonts[Math.floor(Math.random() * fonts.length)];
       const left = `${Math.random() * 80 + 10}%`; // Random horizontal position
       const top = `${Math.random() * 80 + 10}%`; // Random vertical position
-
+  
       setDescriptions((prev) => {
         const updatedDescriptions = [{ text: newDescription, font, left, top }, ...prev].slice(0, 20); // Keep only the last 20 descriptions
         return updatedDescriptions;
@@ -70,7 +70,7 @@ const CameraVision: React.FC = () => {
         ...prev,
       ].slice(0, 20));
     }
-  }, [descriptions, fonts]);
+  }, [descriptions, fonts, openai]);
 
   useEffect(() => {
     const interval = setInterval(captureAndDescribe, 1000); // Capture every second
