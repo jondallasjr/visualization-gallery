@@ -1,234 +1,338 @@
-// src/components/visualizations/LiquidMorph.tsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+// src/components/visualizations/PsychedelicAutomata.tsx
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
-// Define types for points and shapes
-type Point = { x: number; y: number };
-type Shape = Point[];
+const PsychedelicAutomata = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const gridRef = useRef<Cell[][] | null>(null);
+  const nextGridRef = useRef<Cell[][] | null>(null);
+  const [isRunning, setIsRunning] = useState(true);
+  const [config] = useState({
+    cellSize: 4,
+    updateInterval: 50,
+    colorMutationRate: 0.1,
+    colorInheritance: 0.7,
+    initialDensity: 0.3,
+  });
 
-const LiquidMorph = () => {
-  const [time, setTime] = useState<number>(0);
-  const requestRef = useRef<number | null>(null);
-  const previousTimeRef = useRef<number | null>(null);
+  // Audio analysis
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const dataArrayRef = useRef<Uint8Array | null>(null);
+  const beatThreshold = 0.5; // Adjust for sensitivity
+  const lastBeatTimeRef = useRef<number>(0);
 
-  // Define shape paths with equal number of points for smooth morphing
-  const shapes: Record<string, Shape> = {
-    circle: generateCirclePoints(32),
-    star: generateStarPoints(32),
-    square: generateSquarePoints(32),
-    flower: generateFlowerPoints(32),
-  };
+  class Cell {
+    alive: boolean;
+    hue: number;
+    saturation: number;
+    brightness: number;
+    age: number;
 
-  // Track current and next shapes for morphing
-  const [currentShape, setCurrentShape] = useState<string>('circle');
-  const [nextShape, setNextShape] = useState<string>('star');
-  const [morphProgress, setMorphProgress] = useState<number>(0);
-  const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
-
-  function generateCirclePoints(numPoints: number): Shape {
-    return Array.from({ length: numPoints }, (_, i) => {
-      const angle = (i * 2 * Math.PI) / numPoints;
-      const radius = 100;
-      return {
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
-      };
-    });
-  }
-
-  function generateStarPoints(numPoints: number): Shape {
-    return Array.from({ length: numPoints }, (_, i) => {
-      const angle = (i * 2 * Math.PI) / numPoints;
-      const radius = i % 2 === 0 ? 100 : 50;
-      return {
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
-      };
-    });
-  }
-
-  function generateSquarePoints(numPoints: number): Shape {
-    const points: Shape = [];
-    const size = 100;
-    const pointsPerSide = numPoints / 4;
-
-    // Top side
-    for (let i = 0; i < pointsPerSide; i++) {
-      points.push({
-        x: -size + (i * 2 * size) / pointsPerSide,
-        y: -size,
-      });
-    }
-    // Right side
-    for (let i = 0; i < pointsPerSide; i++) {
-      points.push({
-        x: size,
-        y: -size + (i * 2 * size) / pointsPerSide,
-      });
-    }
-    // Bottom side
-    for (let i = 0; i < pointsPerSide; i++) {
-      points.push({
-        x: size - (i * 2 * size) / pointsPerSide,
-        y: size,
-      });
-    }
-    // Left side
-    for (let i = 0; i < pointsPerSide; i++) {
-      points.push({
-        x: -size,
-        y: size - (i * 2 * size) / pointsPerSide,
-      });
+    constructor(alive: boolean = false) {
+      this.alive = alive;
+      this.hue = Math.random() * 360;
+      this.saturation = 70 + Math.random() * 30;
+      this.brightness = 50 + Math.random() * 50;
+      this.age = 0;
     }
 
-    return points;
+    clone(): Cell {
+      const newCell = new Cell(this.alive);
+      newCell.hue = this.hue;
+      newCell.saturation = this.saturation;
+      newCell.brightness = this.brightness;
+      newCell.age = this.age;
+      return newCell;
+    }
   }
 
-  function generateFlowerPoints(numPoints: number): Shape {
-    return Array.from({ length: numPoints }, (_, i) => {
-      const angle = (i * 2 * Math.PI) / numPoints;
-      const radius = 100 * (1 + 0.3 * Math.sin(6 * angle));
-      return {
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
-      };
-    });
-  }
+  // Initialize audio analysis
+  const initializeAudio = useCallback(async () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
 
-  function interpolatePoints(pointsA: Shape, pointsB: Shape, progress: number): Shape {
-    // Ensure both shapes have the same number of points
-    if (pointsA.length !== pointsB.length) {
-      console.error('Shapes must have the same number of points for interpolation');
-      return pointsA;
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      dataArrayRef.current = dataArray;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+    }
+  }, []);
+
+  // Detect beats in the audio stream
+  const detectBeat = useCallback((): boolean => {
+    if (!analyserRef.current || !dataArrayRef.current) return false;
+
+    analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+
+    // Focus on low frequencies (bass) for beat detection
+    const bassRange = dataArrayRef.current.slice(0, 10); // First 10 bins (~0-200Hz)
+    const bassSum = bassRange.reduce((sum, value) => sum + value, 0);
+    const bassAvg = bassSum / bassRange.length;
+
+    // Normalize to 0-1
+    const normalizedBass = bassAvg / 255;
+
+    // Detect a beat if the bass exceeds the threshold
+    if (normalizedBass > beatThreshold) {
+      lastBeatTimeRef.current = performance.now();
+      return true;
     }
 
-    return pointsA.map((pointA, i) => ({
-      x: pointA.x + (pointsB[i].x - pointA.x) * progress,
-      y: pointA.y + (pointsB[i].y - pointA.y) * progress,
-    }));
-  }
+    return false;
+  }, [beatThreshold]);
 
-  function pointsToPath(points: Shape): string {
-    return points.reduce((path: string, point: Point, i: number) => {
-      const command = i === 0 ? 'M' : 'L';
-      return `${path} ${command} ${point.x} ${point.y}`;
-    }, '') + ' Z';
-  }
+  // Update cell behavior on beats
+  const updateCellOnBeat = useCallback((grid: Cell[][]): void => {
+    const width = grid[0].length;
+    const height = grid.length;
 
-  const animate = useCallback((time: number) => {
-    if (previousTimeRef.current !== null) {
-      const deltaTime = time - previousTimeRef.current;
-      setTime((prevTime) => prevTime + deltaTime);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const cell = grid[y][x];
 
-      if (isTransitioning) {
-        setMorphProgress((prev) => {
-          const newProgress = prev + deltaTime * 0.001;
-          if (newProgress >= 1) {
-            setIsTransitioning(false);
-            setCurrentShape(nextShape);
-            return 0;
-          }
-          return newProgress;
-        });
+        // Activate cells and change colors on beat
+        if (Math.random() < 0.5) {
+          cell.alive = true;
+          cell.hue = (cell.hue + Math.random() * 360) % 360;
+          cell.saturation = 70 + Math.random() * 30;
+          cell.brightness = 50 + Math.random() * 50;
+        }
       }
     }
-    previousTimeRef.current = time;
-    requestRef.current = requestAnimationFrame(animate);
-  }, [isTransitioning, nextShape]);
+  }, []);
+
+  const initializeGrid = useCallback((width: number, height: number): Cell[][] => {
+    const grid: Cell[][] = new Array(height);
+    for (let y = 0; y < height; y++) {
+      grid[y] = new Array(width);
+      for (let x = 0; x < width; x++) {
+        grid[y][x] = new Cell(Math.random() < config.initialDensity);
+      }
+    }
+    return grid;
+  }, [config.initialDensity]);
+
+  const getNeighborStats = useCallback((
+    grid: Cell[][],
+    x: number,
+    y: number
+  ): {
+    aliveCount: number;
+    avgHue: number;
+    avgSat: number;
+    avgBright: number;
+  } => {
+    const width = grid[0].length;
+    const height = grid.length;
+    let aliveCount = 0;
+    let avgHue = 0;
+    let avgSat = 0;
+    let avgBright = 0;
+    let count = 0;
+
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+
+        const nx = (x + dx + width) % width;
+        const ny = (y + dy + height) % height;
+        const neighbor = grid[ny][nx];
+
+        if (neighbor.alive) {
+          aliveCount++;
+          avgHue += neighbor.hue;
+          avgSat += neighbor.saturation;
+          avgBright += neighbor.brightness;
+          count++;
+        }
+      }
+    }
+
+    return {
+      aliveCount,
+      avgHue: count > 0 ? avgHue / count : Math.random() * 360,
+      avgSat: count > 0 ? avgSat / count : 70 + Math.random() * 30,
+      avgBright: count > 0 ? avgBright / count : 50 + Math.random() * 50,
+    };
+  }, []);
+
+  const updateCell = useCallback((
+    grid: Cell[][],
+    nextGrid: Cell[][],
+    x: number,
+    y: number
+  ): void => {
+    const cell = grid[y][x];
+    const { aliveCount, avgHue, avgSat, avgBright } = getNeighborStats(grid, x, y);
+    const nextCell = nextGrid[y][x];
+
+    if (cell.alive) {
+      nextCell.alive = aliveCount === 2 || aliveCount === 3;
+    } else {
+      nextCell.alive = aliveCount === 3;
+    }
+
+    if (nextCell.alive) {
+      if (Math.random() < config.colorMutationRate) {
+        nextCell.hue = (avgHue + (Math.random() - 0.5) * 60 + 360) % 360;
+        nextCell.saturation = Math.max(60, Math.min(100, avgSat + (Math.random() - 0.5) * 20));
+        nextCell.brightness = Math.max(40, Math.min(100, avgBright + (Math.random() - 0.5) * 20));
+      } else {
+        nextCell.hue = (avgHue + (Math.random() - 0.5) * 10 + 360) % 360;
+        nextCell.saturation = Math.max(60, Math.min(100, avgSat + (Math.random() - 0.5) * 5));
+        nextCell.brightness = Math.max(40, Math.min(100, avgBright + (Math.random() - 0.5) * 5));
+      }
+      nextCell.age = cell.alive ? cell.age + 1 : 0;
+    }
+  }, [config.colorMutationRate, getNeighborStats]);
+
+  const updateGrid = useCallback((): void => {
+    if (!gridRef.current || !nextGridRef.current) return;
+
+    const width = gridRef.current[0].length;
+    const height = gridRef.current.length;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        nextGridRef.current[y][x] = gridRef.current[y][x].clone();
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        updateCell(gridRef.current, nextGridRef.current, x, y);
+      }
+    }
+
+    // Detect beats and update cells
+    if (detectBeat()) {
+      updateCellOnBeat(nextGridRef.current);
+    }
+
+    [gridRef.current, nextGridRef.current] = [nextGridRef.current, gridRef.current];
+  }, [detectBeat, updateCell, updateCellOnBeat]);
+
+  const drawGrid = useCallback((ctx: CanvasRenderingContext2D): void => {
+    if (!gridRef.current) return;
+
+    const width = gridRef.current[0].length;
+    const height = gridRef.current.length;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const cell = gridRef.current[y][x];
+        if (cell.alive) {
+          ctx.fillStyle = `hsla(${cell.hue}, ${cell.saturation}%, ${cell.brightness}%, ${0.8 + Math.min(cell.age / 100, 0.2)})`;
+          ctx.fillRect(
+            x * config.cellSize,
+            y * config.cellSize,
+            config.cellSize,
+            config.cellSize
+          );
+        }
+      }
+    }
+  }, [config.cellSize]);
 
   useEffect(() => {
-    requestRef.current = requestAnimationFrame(animate);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+    let lastUpdate = 0;
+
+    const width = Math.ceil(canvas.width / config.cellSize);
+    const height = Math.ceil(canvas.height / config.cellSize);
+    gridRef.current = initializeGrid(width, height);
+    nextGridRef.current = initializeGrid(width, height);
+
+    // Initialize audio
+    initializeAudio();
+
+    const render = (timestamp: number): void => {
+      if (isRunning && timestamp - lastUpdate > config.updateInterval) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        updateGrid();
+        drawGrid(ctx);
+        lastUpdate = timestamp;
+      }
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render(0);
+
     return () => {
-      if (requestRef.current) {
-        cancelAnimationFrame(requestRef.current);
+      cancelAnimationFrame(animationFrameId);
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
       }
     };
-  }, [animate]);
+  }, [isRunning, config, initializeGrid, updateGrid, drawGrid, initializeAudio]);
 
-  const transitionToShape = (shapeName: string) => {
-    if (shapeName !== currentShape && !isTransitioning) {
-      setNextShape(shapeName);
-      setIsTransitioning(true);
-      setMorphProgress(0);
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>): void => {
+    const canvas = canvasRef.current;
+    if (!canvas || !gridRef.current) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / config.cellSize);
+    const y = Math.floor((e.clientY - rect.top) / config.cellSize);
+
+    const radius = 5;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance <= radius) {
+          const nx = (x + dx + gridRef.current[0].length) % gridRef.current[0].length;
+          const ny = (y + dy + gridRef.current.length) % gridRef.current.length;
+          const cell = gridRef.current[ny][nx];
+          cell.alive = true;
+          cell.hue = Math.random() * 360;
+          cell.saturation = 70 + Math.random() * 30;
+          cell.brightness = 50 + Math.random() * 50;
+        }
+      }
     }
   };
 
-  const currentPoints = isTransitioning
-    ? interpolatePoints(shapes[currentShape], shapes[nextShape], morphProgress)
-    : shapes[currentShape];
-
-  // Calculate liquid blob effect
-  const blobEffect = (progress: number): Shape => {
-    const amplitude = 10 * (1 - Math.abs(progress - 0.5) * 2);
-    return currentPoints.map((point, i) => {
-      const angle = (i * 2 * Math.PI) / currentPoints.length + time * 0.001;
-      return {
-        x: point.x + Math.cos(angle * 3) * amplitude,
-        y: point.y + Math.sin(angle * 2) * amplitude,
-      };
-    });
-  };
-
-  const liquidPathD = pointsToPath(blobEffect(morphProgress));
-
   return (
-    <div className="w-full max-w-4xl mx-auto p-4 flex flex-col items-center">
-      <div className="rounded-lg overflow-hidden shadow-lg bg-gray-900 p-8 w-full max-w-2xl">
-        <svg viewBox="-150 -150 300 300" className="w-full h-96">
-          <defs>
-            <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#ff3e88" stopOpacity="0.8">
-                <animate
-                  attributeName="stop-color"
-                  values="#ff3e88;#ff8b3e;#3eff8b;#3e88ff;#ff3e88"
-                  dur="10s"
-                  repeatCount="indefinite"
-                />
-              </stop>
-              <stop offset="100%" stopColor="#3e88ff" stopOpacity="0.8">
-                <animate
-                  attributeName="stop-color"
-                  values="#3e88ff;#ff3e88;#ff8b3e;#3eff8b;#3e88ff"
-                  dur="10s"
-                  repeatCount="indefinite"
-                />
-              </stop>
-            </linearGradient>
-            <filter id="glow">
-              <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-              <feMerge>
-                <feMergeNode in="coloredBlur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-
-          <path
-            d={liquidPathD}
-            fill="url(#gradient1)"
-            filter="url(#glow)"
-            stroke="white"
-            strokeWidth="0.5"
-          />
-        </svg>
+    <div className="w-full max-w-4xl mx-auto p-4">
+      <div className="rounded-lg overflow-hidden shadow-lg bg-black">
+        <canvas
+          ref={canvasRef}
+          width={800}
+          height={600}
+          className="w-full h-full"
+          onClick={handleCanvasClick}
+        />
       </div>
-
-      <div className="mt-4 flex justify-center gap-2 flex-wrap">
-        {Object.keys(shapes).map((shapeName) => (
-          <button
-            key={shapeName}
-            onClick={() => transitionToShape(shapeName)}
-            className={`px-4 py-2 rounded ${
-              currentShape === shapeName
-                ? 'bg-purple-600 text-white'
-                : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
-            } transition-colors`}
-          >
-            {shapeName.charAt(0).toUpperCase() + shapeName.slice(1)}
-          </button>
-        ))}
+      <div className="mt-4 text-center">
+        <button
+          onClick={() => setIsRunning(!isRunning)}
+          className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+        >
+          {isRunning ? 'Pause' : 'Resume'}
+        </button>
+        <div className="mt-2 text-sm text-gray-600">
+          Click anywhere to create new life patterns
+        </div>
       </div>
     </div>
   );
 };
 
-export default LiquidMorph;
+export default PsychedelicAutomata;

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+// src/components/visualizations/LiquidMorph.tsx
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 // Define types for points and shapes
 type Point = { x: number; y: number };
@@ -113,7 +114,7 @@ const LiquidMorph = () => {
     }, '') + ' Z';
   }
 
-  const animate = (time: number) => {
+  const animate = useCallback((time: number) => {
     if (previousTimeRef.current !== null) {
       const deltaTime = time - previousTimeRef.current;
       setTime((prevTime) => prevTime + deltaTime);
@@ -132,7 +133,7 @@ const LiquidMorph = () => {
     }
     previousTimeRef.current = time;
     requestRef.current = requestAnimationFrame(animate);
-  };
+  }, [isTransitioning, nextShape]);
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(animate);
@@ -141,7 +142,7 @@ const LiquidMorph = () => {
         cancelAnimationFrame(requestRef.current);
       }
     };
-  }, [isTransitioning]);
+  }, [animate]);
 
   const transitionToShape = (shapeName: string) => {
     if (shapeName !== currentShape && !isTransitioning) {
@@ -154,8 +155,6 @@ const LiquidMorph = () => {
   const currentPoints = isTransitioning
     ? interpolatePoints(shapes[currentShape], shapes[nextShape], morphProgress)
     : shapes[currentShape];
-
-  const pathD = pointsToPath(currentPoints);
 
   // Calculate liquid blob effect
   const blobEffect = (progress: number): Shape => {
