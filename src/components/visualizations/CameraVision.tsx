@@ -1,14 +1,13 @@
 // src/components/visualizations/CameraVision.tsx
 "use client";
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import { OpenAI } from 'openai';
 
 const CameraVision: React.FC = () => {
   const webcamRef = useRef<Webcam>(null);
   const [descriptions, setDescriptions] = useState<{ text: string; font: string; left: string; top: string }[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const openai = new OpenAI({
     apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY, // Ensure you have this in your .env file
@@ -20,18 +19,16 @@ const CameraVision: React.FC = () => {
     'Arial', 'Courier New', 'Georgia', 'Times New Roman', 'Verdana', 'Comic Sans MS', 'Impact', 'Lucida Console', 'Palatino', 'Trebuchet MS'
   ];
 
-  const captureAndDescribe = async () => {
+  const captureAndDescribe = useCallback(async () => {
     if (!webcamRef.current) return;
 
     const imageSrc = webcamRef.current.getScreenshot();
     if (!imageSrc) return;
 
-    setIsLoading(true);
-
     try {
       // Append the last 20 descriptions to the prompt
       const previousDescriptions = descriptions.map(d => d.text).join('\n');
-      const prompt = `Describe what you see in this image in 1-5 words. Be poetic, cryptic, and intriguing. Do not repeat the previous descriptions. Focus on new objects, ideas, or concepts. If there is nothing new, respond with "Nothing new...":\n<Previous Descriptions>${previousDescriptions}\n</Previous Descriptions>`;
+      const prompt = `Describe what you see in this image in 1-5 words. Be poetic, cryptic, and intriguing. Do not repeat the previous descriptions. Focus on new objects, ideas, or concepts.\n<Previous Descriptions>\n${previousDescriptions}\n</Previous Descriptions>`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -72,15 +69,13 @@ const CameraVision: React.FC = () => {
         { text: 'A fleeting glimpse....', font: 'Arial', left: '50%', top: '50%' },
         ...prev,
       ].slice(0, 20));
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, [descriptions, fonts]);
 
   useEffect(() => {
     const interval = setInterval(captureAndDescribe, 1000); // Capture every second
     return () => clearInterval(interval);
-  }, [descriptions]); // Add descriptions to dependency array to ensure the latest descriptions are used
+  }, [captureAndDescribe]); // Add captureAndDescribe to the dependency array
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-black p-4 relative overflow-hidden">
